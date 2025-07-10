@@ -3,6 +3,7 @@ import { KvAdapter, SetCommandOptions } from './types';
 
 interface Config {
   logger?: boolean;
+  disableMemory?: boolean;
 }
 
 const memoryKv = new MemoryKvAdapter();
@@ -24,6 +25,19 @@ class KV<Adapter extends KvAdapter> implements KvAdapter {
 
   async mget<Data>(...keys: string[]) {
     const kv = await this.getKv();
+
+    // Skip memory cache if disabled (useful for testing)
+    if (this.config.disableMemory) {
+      this.logger(`MGET - Keys: ${keys.toString()} - MEMORY DISABLED - Direct adapter access`);
+
+      const directValues = await kv.mget<Data>(...keys);
+
+      this.logger(
+        `MGET - Keys: ${keys.toString()} - Value: ${JSON.stringify(directValues, null, 2)}`,
+      );
+
+      return directValues;
+    }
 
     const memoryValues = (await this.memoryKv.mget<Data>(...keys)).filter(Boolean);
 
@@ -60,6 +74,13 @@ class KV<Adapter extends KvAdapter> implements KvAdapter {
 
     this.logger(`SET - Key: ${key} - Value: ${JSON.stringify(value, null, 2)}`);
 
+    // Skip memory cache if disabled (useful for testing)
+    if (this.config.disableMemory) {
+      this.logger(`SET - Key: ${key} - MEMORY DISABLED - Direct adapter only`);
+
+      return kv.set(key, value, opts);
+    }
+
     await Promise.all([this.memoryKv.set(key, value, opts), kv.set(key, value, opts)]);
 
     return value;
@@ -82,16 +103,11 @@ class KV<Adapter extends KvAdapter> implements KvAdapter {
 }
 
 async function createKVAdapter() {
-  if (process.env.BC_KV_REST_API_URL && process.env.BC_KV_REST_API_TOKEN) {
-    const { BcKvAdapter } = await import('./adapters/bc');
+  // Prioritize Runtime Cache for Vercel environments
+  if (process.env.VERCEL === '1') {
+    const { RuntimeCacheAdapter } = await import('./adapters/vercel-runtime-cache');
 
-    return new BcKvAdapter();
-  }
-
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-    const { VercelKvAdapter } = await import('./adapters/vercel');
-
-    return new VercelKvAdapter();
+    return new RuntimeCacheAdapter();
   }
 
   if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -107,6 +123,7 @@ const adapterInstance = new KV(createKVAdapter, {
   logger:
     (process.env.NODE_ENV !== 'production' && process.env.KV_LOGGER !== 'false') ||
     process.env.KV_LOGGER === 'true',
+  disableMemory: process.env.KV_DISABLE_MEMORY === 'true',
 });
 
 export { adapterInstance as kv };

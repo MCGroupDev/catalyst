@@ -98,9 +98,9 @@ importers:
       '@vercel/analytics':
         specifier: ^1.5.0
         version: 1.5.0(next@15.4.2-canary.10(@babel/core@7.27.4)(@playwright/test@1.52.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(svelte@5.1.15)(vue@3.5.16(typescript@5.8.3))
-      '@vercel/kv':
-        specifier: ^3.0.0
-        version: 3.0.0
+      '@vercel/functions':
+        specifier: ^2.2.3
+        version: 2.2.8
       '@vercel/speed-insights':
         specifier: ^1.2.0
         version: 1.2.0(next@15.4.2-canary.10(@babel/core@7.27.4)(@playwright/test@1.52.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(svelte@5.1.15)(vue@3.5.16(typescript@5.8.3))
@@ -3176,9 +3176,18 @@ packages:
       vue-router:
         optional: true
 
-  '@vercel/kv@3.0.0':
-    resolution: {integrity: sha512-pKT8fRnfyYk2MgvyB6fn6ipJPCdfZwiKDdw7vB+HL50rjboEBHDVBEcnwfkEpVSp2AjNtoaOUH7zG+bVC/rvSg==}
-    engines: {node: '>=14.6'}
+  '@vercel/functions@2.2.8':
+    resolution: {integrity: sha512-Y4G2MEYCVTBtEeo6/+Ydwu5ehwryThJ7or3EM0oZa+oMDLm+z6VchDDc7rNmNIrtTS1ULcUYNqAItjs0mHMgKw==}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-web-identity': '*'
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-web-identity':
+        optional: true
+
+  '@vercel/oidc@2.0.0':
+    resolution: {integrity: sha512-U0hncpXof7gC9xtmSrjz6vrDqdwJXi8z/zSc9FyS80AoXKfCZtpkBz9gtL3x30Agmpxpwe35P1W2dP9Epa/RGA==}
+    engines: {node: '>= 18'}
 
   '@vercel/speed-insights@1.2.0':
     resolution: {integrity: sha512-y9GVzrUJ2xmgtQlzFP2KhVRoCglwfRQgjyfY607aU0hh0Un6d0OUyrJkjuAlsV18qR4zfoFPs/BiIj9YDS6Wzw==}
@@ -10787,9 +10796,11 @@ snapshots:
       svelte: 5.1.15
       vue: 3.5.16(typescript@5.8.3)
 
-  '@vercel/kv@3.0.0':
+  '@vercel/functions@2.2.8':
     dependencies:
-      '@upstash/redis': 1.35.0
+      '@vercel/oidc': 2.0.0
+
+  '@vercel/oidc@2.0.0': {}
 
   '@vercel/speed-insights@1.2.0(next@15.4.2-canary.10(@babel/core@7.27.4)(@playwright/test@1.52.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(svelte@5.1.15)(vue@3.5.16(typescript@5.8.3))':
     optionalDependencies:
