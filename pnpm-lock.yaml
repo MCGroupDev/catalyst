@@ -38,6 +38,9 @@ importers:
       '@bigcommerce/catalyst-client':
         specifier: workspace:^
         version: link:../packages/client
+      '@bigcommerce/catalyst-sitemap-client':
+        specifier: workspace:^
+        version: link:../packages/catalyst-sitemap-client
       '@conform-to/react':
         specifier: ^1.6.1
         version: 1.6.1(react@19.1.0)
@@ -282,6 +285,25 @@ importers:
       tailwindcss-animate:
         specifier: 1.0.7
         version: 1.0.7(tailwindcss@3.4.17(ts-node@10.9.2(@swc/core@1.11.31)(@types/node@22.15.30)(typescript@5.8.3)))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
+
+  packages/catalyst-sitemap-client:
+    dependencies:
+      std-env:
+        specifier: ^3.9.0
+        version: 3.9.0
+    devDependencies:
+      '@bigcommerce/eslint-config-catalyst':
+        specifier: workspace:^
+        version: link:../eslint-config-catalyst
+      eslint:
+        specifier: ^8.57.1
+        version: 8.57.1
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.0(@swc/core@1.11.31)(jiti@2.4.2)(postcss@8.5.6)(typescript@5.8.3)(yaml@2.6.0)
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -7014,6 +7036,7 @@ packages:
   source-map@0.8.0-beta.0:
     resolution: {integrity: sha512-2ymg6oRBpebeZi9UUNsgQ89bhx01TcTkmNTGnNO88imTmbSgy4nfujrgVEFKWpMTEGA11EDkTt7mqObTPdigIA==}
     engines: {node: '>= 8'}
+    deprecated: The work that was done in this beta branch won't be included in future versions
 
   spawndamnit@3.0.1:
     resolution: {integrity: sha512-MmnduQUuHCoFckZoWnXsTg7JaiLBJrKFj9UI2MbRPGaJeVpsLcVBu6P/IGZovziM/YBsellCmsprgNA+w0CzVg==}
