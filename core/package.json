@@ -8,7 +8,7 @@
     "generate": "dotenv -e .env.local -- node ./scripts/generate.cjs",
     "build": "npm run generate && catalyst build",
     "build:analyze": "ANALYZE=true npm run build",
-    "start": "next start",
+    "start": "catalyst start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

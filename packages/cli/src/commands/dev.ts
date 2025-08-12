@@ -11,13 +11,13 @@ export const dev = new Command('dev')
     'Path to the root directory of your Catalyst project (default: current working directory).',
     process.cwd(),
   )
-  .action(async (opts) => {
+  .action(async (options) => {
     try {
-      const nextBin = join(opts.rootDir, 'node_modules', '.bin', 'next');
+      const nextBin = join(options.rootDir, 'node_modules', '.bin', 'next');
 
-      await execa(nextBin, ['dev', '-p', opts.port], {
+      await execa(nextBin, ['dev', '-p', options.port], {
         stdio: 'inherit',
-        cwd: opts.rootDir,
+        cwd: options.rootDir,
       });
     } catch (error) {
       consola.error(error instanceof Error ? error.message : error);
