@@ -1,43 +1,48 @@
-import { getLocale, getTranslations } from 'next-intl/server';
+/* eslint-disable react/jsx-no-bind */
+import { Metadata } from 'next';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { ResetPasswordSection } from '@/vibes/soul/sections/reset-password-section';
 import { redirect } from '~/i18n/routing';
 
-import { ChangePasswordForm } from './_components/change-password-form';
-
-export async function generateMetadata() {
-  const t = await getTranslations('ChangePassword');
-
-  return {
-    title: t('title'),
-  };
-}
+import { changePassword } from './_actions/change-password';
 
 interface Props {
+  params: Promise<{ locale: string }>;
   searchParams: Promise<{
     c?: string;
     t?: string;
   }>;
 }
 
-export default async function ChangePassword({ searchParams }: Props) {
-  const { c: customerId, t: customerToken } = await searchParams;
-  const t = await getTranslations('ChangePassword');
-  const locale = await getLocale();
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params;
 
-  if (!customerId || !customerToken) {
-    redirect({ href: '/login', locale });
-  }
+  const t = await getTranslations({ locale, namespace: 'Auth.ChangePassword' });
 
-  if (customerId && customerToken) {
-    return (
-      <div className="mx-auto my-6 max-w-4xl">
-        <h2 className="mb-8 text-4xl font-black lg:text-5xl">{t('heading')}</h2>
-        <ChangePasswordForm customerId={customerId} customerToken={customerToken} />
-      </div>
-    );
-  }
-
-  return null;
+  return {
+    title: t('title'),
+  };
 }
 
-export const runtime = 'edge';
+export default async function ChangePassword({ params, searchParams }: Props) {
+  const { locale } = await params;
+
+  setRequestLocale(locale);
+
+  const { c: customerEntityId, t: token } = await searchParams;
+  const t = await getTranslations('Auth.ChangePassword');
+
+  if (!customerEntityId || !token) {
+    return redirect({ href: '/login', locale });
+  }
+
+  return (
+    <ResetPasswordSection
+      action={changePassword.bind(null, { customerEntityId, token })}
+      confirmPasswordLabel={t('confirmPassword')}
+      newPasswordLabel={t('newPassword')}
+      title={t('title')}
+    />
+  );
+}

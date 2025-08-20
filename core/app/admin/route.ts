@@ -1,4 +1,5 @@
-import { defaultLocale, redirect } from '~/i18n/routing';
+import { defaultLocale } from '~/i18n/locales';
+import { redirect } from '~/i18n/routing';
 
 const canonicalDomain: string = process.env.BIGCOMMERCE_GRAPHQL_API_DOMAIN ?? 'mybigcommerce.com';
 const BIGCOMMERCE_STORE_HASH = process.env.BIGCOMMERCE_STORE_HASH;
@@ -17,5 +18,3 @@ export const GET = () => {
     locale: defaultLocale,
   });
 };
-
-export const runtime = 'edge';

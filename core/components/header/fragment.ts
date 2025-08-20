@@ -1,4 +1,4 @@
-import { graphql } from '~/client/graphql';
+import { FragmentOf, graphql } from '~/client/graphql';
 
 export const HeaderFragment = graphql(`
   fragment HeaderFragment on Site {
@@ -17,6 +17,20 @@ export const HeaderFragment = graphql(`
         }
       }
     }
+    currencies(first: 25) {
+      edges {
+        node {
+          code
+          isTransactional
+          isDefault
+        }
+      }
+    }
+  }
+`);
+
+export const HeaderLinksFragment = graphql(`
+  fragment HeaderLinksFragment on Site {
     categoryTree {
       name
       path
@@ -31,3 +45,8 @@ export const HeaderFragment = graphql(`
     }
   }
 `);
+
+export type Currency = NonNullable<
+  NonNullable<FragmentOf<typeof HeaderFragment>>['currencies']['edges']
+>[number]['node'];
+export type CurrencyCode = Currency['code'];

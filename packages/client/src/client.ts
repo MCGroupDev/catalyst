@@ -1,4 +1,7 @@
-import { BigCommerceAPIError } from './error';
+import { BigCommerceAPIError } from './api-error';
+import { BigCommerceAuthError } from './gql-auth-error';
+import { BigCommerceGQLError } from './gql-error';
+import { parseGraphQLError } from './lib/error';
 import { DocumentDecoration } from './types';
 import { getOperationInfo } from './utils/getOperationName';
 import { normalizeQuery } from './utils/normalizeQuery';
@@ -13,7 +16,6 @@ export const adminApiHostname: string =
 interface Config<FetcherRequestInit extends RequestInit = RequestInit> {
   storeHash: string;
   storefrontToken: string;
-  xAuthToken: string;
   channelId?: string;
   platform?: string;
   backendUserAgentExtensions?: string;
@@ -22,6 +24,10 @@ interface Config<FetcherRequestInit extends RequestInit = RequestInit> {
   beforeRequest?: (
     fetchOptions?: FetcherRequestInit,
   ) => Promise<Partial<FetcherRequestInit> | undefined> | Partial<FetcherRequestInit> | undefined;
+  onError?: (
+    error: BigCommerceGQLError,
+    queryType: 'query' | 'mutation' | 'subscription',
+  ) => Promise<void> | void;
 }
 
 interface BigCommerceResponseError {
@@ -38,6 +44,8 @@ interface BigCommerceResponse<T> {
   errors?: BigCommerceResponseError[];
 }
 
+type GraphQLErrorPolicy = 'none' | 'all' | 'auth' | 'ignore';
+
 class Client<FetcherRequestInit extends RequestInit = RequestInit> {
   private backendUserAgent: string;
   private readonly defaultChannelId: string;
@@ -45,6 +53,10 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
   private beforeRequest?: (
     fetchOptions?: FetcherRequestInit,
   ) => Promise<Partial<FetcherRequestInit> | undefined> | Partial<FetcherRequestInit> | undefined;
+  private onError?: (
+    error: BigCommerceGQLError,
+    queryType: 'query' | 'mutation' | 'subscription',
+  ) => Promise<void> | void;
 
   private trustedProxySecret = process.env.BIGCOMMERCE_TRUSTED_PROXY_SECRET;
 
@@ -55,10 +67,15 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
 
     this.defaultChannelId = config.channelId;
     this.backendUserAgent = getBackendUserAgent(config.platform, config.backendUserAgentExtensions);
-    this.getChannelId = config.getChannelId
-      ? config.getChannelId
-      : (defaultChannelId) => defaultChannelId;
+
+    this.getChannelId =
+      config.getChannelId ??
+      function defaultChannelIdFn(defaultChannelId) {
+        return defaultChannelId;
+      };
+
     this.beforeRequest = config.beforeRequest;
+    this.onError = config.onError;
   }
 
   // Overload for documents that require variables
@@ -68,6 +85,8 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
     customerAccessToken?: string;
     fetchOptions?: FetcherRequestInit;
     channelId?: string;
+    errorPolicy?: GraphQLErrorPolicy;
+    validateCustomerAccessToken?: boolean;
   }): Promise<BigCommerceResponse<TResult>>;
 
   // Overload for documents that do not require variables
@@ -77,6 +96,8 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
     customerAccessToken?: string;
     fetchOptions?: FetcherRequestInit;
     channelId?: string;
+    errorPolicy?: GraphQLErrorPolicy;
+    validateCustomerAccessToken?: boolean;
   }): Promise<BigCommerceResponse<TResult>>;
 
   async fetch<TResult, TVariables>({
@@ -85,18 +106,27 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
     customerAccessToken,
     fetchOptions = {} as FetcherRequestInit,
     channelId,
+    errorPolicy = 'none',
+    validateCustomerAccessToken = true,
   }: {
     document: DocumentDecoration<TResult, TVariables>;
     variables?: TVariables;
     customerAccessToken?: string;
     fetchOptions?: FetcherRequestInit;
     channelId?: string;
+    errorPolicy?: GraphQLErrorPolicy;
+    validateCustomerAccessToken?: boolean;
   }): Promise<BigCommerceResponse<TResult>> {
     const { headers = {}, ...rest } = fetchOptions;
     const query = normalizeQuery(document);
     const log = this.requestLogger(query);
+    const operationInfo = getOperationInfo(query);
 
-    const graphqlUrl = await this.getGraphQLEndpoint(channelId);
+    const graphqlUrl = await this.getGraphQLEndpoint(
+      channelId,
+      operationInfo.name,
+      operationInfo.type,
+    );
     const { headers: additionalFetchHeaders = {}, ...additionalFetchOptions } =
       (await this.beforeRequest?.(fetchOptions)) ?? {};
 
@@ -107,9 +137,12 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
         Authorization: `Bearer ${this.config.storefrontToken}`,
         'User-Agent': this.backendUserAgent,
         ...(customerAccessToken && { 'X-Bc-Customer-Access-Token': customerAccessToken }),
+        ...(validateCustomerAccessToken && {
+          'X-Bc-Error-On-Invalid-Customer-Access-Token': 'true',
+        }),
         ...(this.trustedProxySecret && { 'X-BC-Trusted-Proxy-Secret': this.trustedProxySecret }),
-        ...additionalFetchHeaders,
-        ...headers,
+        ...Object.fromEntries(new Headers(additionalFetchHeaders).entries()),
+        ...Object.fromEntries(new Headers(headers).entries()),
       },
       body: JSON.stringify({
         query,
@@ -125,28 +158,36 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
 
     log(response);
 
-    return response.json() as Promise<BigCommerceResponse<TResult>>;
-  }
+    const result = (await response.json()) as BigCommerceResponse<TResult>;
 
-  async fetchShippingZones() {
-    const response = await fetch(
-      `https://${adminApiHostname}/stores/${this.config.storeHash}/v2/shipping/zones`,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'X-Auth-Token': this.config.xAuthToken,
-          'User-Agent': this.backendUserAgent,
-        },
-      },
-    );
+    const { errors, ...data } = result;
 
-    if (!response.ok) {
-      throw new Error(`Unable to get Shipping Zones: ${response.statusText}`);
+    // If errorPolicy is 'none', we throw an error if there are any errors
+    if (errorPolicy === 'none' && errors) {
+      const error = parseGraphQLError(errors);
+
+      await this.onError?.(error, operationInfo.type);
+
+      throw error;
     }
 
-    return response.json() as Promise<unknown>;
+    if (errorPolicy === 'auth' && errors) {
+      const error = parseGraphQLError(errors);
+
+      if (error instanceof BigCommerceAuthError) {
+        await this.onError?.(error, operationInfo.type);
+
+        throw error;
+      }
+    }
+
+    // If errorPolicy is 'ignore', we return the data and ignore the errors
+    if (errorPolicy === 'ignore') {
+      return data;
+    }
+
+    // If errorPolicy is 'all', we return the errors with the data
+    return result;
   }
 
   async fetchSitemapIndex(channelId?: string): Promise<string> {
@@ -175,8 +216,22 @@ class Client<FetcherRequestInit extends RequestInit = RequestInit> {
     return `https://store-${this.config.storeHash}-${resolvedChannelId}.${graphqlApiDomain}`;
   }
 
-  private async getGraphQLEndpoint(channelId?: string) {
-    return `${await this.getCanonicalUrl(channelId)}/graphql`;
+  private async getGraphQLEndpoint(
+    channelId?: string,
+    operationName?: string,
+    operationType?: string,
+  ) {
+    const baseUrl = new URL(`${await this.getCanonicalUrl(channelId)}/graphql`);
+
+    if (operationName) {
+      baseUrl.searchParams.set('operation', operationName);
+    }
+
+    if (operationType) {
+      baseUrl.searchParams.set('type', operationType);
+    }
+
+    return baseUrl.toString();
   }
 
   private requestLogger(document: string) {

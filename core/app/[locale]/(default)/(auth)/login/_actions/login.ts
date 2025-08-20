@@ -1,42 +1,60 @@
 'use server';
 
-import { unstable_rethrow as rethrow } from 'next/navigation';
-import { getLocale } from 'next-intl/server';
+import { BigCommerceGQLError } from '@bigcommerce/catalyst-client';
+import { SubmissionResult } from '@conform-to/react';
+import { parseWithZod } from '@conform-to/zod';
+import { AuthError } from 'next-auth';
+import { getLocale, getTranslations } from 'next-intl/server';
 
-import { Credentials, signIn } from '~/auth';
+import { schema } from '@/vibes/soul/sections/sign-in-section/schema';
+import { signIn } from '~/auth';
 import { redirect } from '~/i18n/routing';
+import { getCartId } from '~/lib/cart';
 
-interface LoginResponse {
-  status: 'success' | 'error';
-}
+export const login = async (
+  { redirectTo }: { redirectTo: string },
+  _lastResult: SubmissionResult | null,
+  formData: FormData,
+) => {
+  const locale = await getLocale();
+  const t = await getTranslations('Auth.Login');
+  const cartId = await getCartId();
 
-export const login = async (formData: FormData): Promise<LoginResponse> => {
+  const submission = parseWithZod(formData, { schema });
+
+  if (submission.status !== 'success') {
+    return submission.reply();
+  }
+
   try {
-    const locale = await getLocale();
-
-    const credentials = Credentials.parse({
-      type: 'password',
-      email: formData.get('email'),
-      password: formData.get('password'),
-    });
-
-    await signIn('credentials', {
-      ...credentials,
-      // We want to use next/navigation for the redirect as it
-      // follows basePath and trailing slash configurations.
+    await signIn('password', {
+      email: submission.value.email,
+      password: submission.value.password,
+      cartId,
       redirect: false,
     });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(error);
 
-    redirect({ href: '/account/orders', locale });
+    if (error instanceof BigCommerceGQLError) {
+      return submission.reply({
+        formErrors: error.errors.map(({ message }) => message),
+      });
+    }
 
-    return {
-      status: 'success',
-    };
-  } catch (error: unknown) {
-    rethrow(error);
+    if (
+      error instanceof AuthError &&
+      error.type === 'CallbackRouteError' &&
+      error.cause &&
+      error.cause.err instanceof BigCommerceGQLError &&
+      error.cause.err.message.includes('Invalid credentials')
+    ) {
+      return submission.reply({ formErrors: [t('invalidCredentials')] });
+    }
 
-    return {
-      status: 'error',
-    };
+    return submission.reply({ formErrors: [t('somethingWentWrong')] });
   }
+
+  return redirect({ href: redirectTo, locale });
 };

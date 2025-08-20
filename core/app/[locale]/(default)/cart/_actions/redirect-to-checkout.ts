@@ -1,42 +1,27 @@
 'use server';
 
-import { getLocale } from 'next-intl/server';
+import { SubmissionResult } from '@conform-to/react';
+import { parseWithZod } from '@conform-to/zod';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { z } from 'zod';
 
-import { getSessionCustomerAccessToken } from '~/auth';
-import { client } from '~/client';
-import { graphql } from '~/client/graphql';
 import { redirect } from '~/i18n/routing';
+import { getCartId } from '~/lib/cart';
 
-const CheckoutRedirectMutation = graphql(`
-  mutation CheckoutRedirectMutation($cartId: String!) {
-    cart {
-      createCartRedirectUrls(input: { cartEntityId: $cartId }) {
-        redirectUrls {
-          redirectedCheckoutUrl
-        }
-      }
-    }
-  }
-`);
-
-export const redirectToCheckout = async (formData: FormData) => {
+export const redirectToCheckout = async (
+  _lastResult: SubmissionResult | null,
+  formData: FormData,
+): Promise<SubmissionResult | null> => {
   const locale = await getLocale();
-  const cartId = z.string().parse(formData.get('cartId'));
-  const customerAccessToken = await getSessionCustomerAccessToken();
+  const t = await getTranslations('Cart.Errors');
 
-  const { data } = await client.fetch({
-    document: CheckoutRedirectMutation,
-    variables: { cartId },
-    fetchOptions: { cache: 'no-store' },
-    customerAccessToken,
-  });
+  const submission = parseWithZod(formData, { schema: z.object({}) });
 
-  const url = data.cart.createCartRedirectUrls.redirectUrls?.redirectedCheckoutUrl;
+  const cartId = await getCartId();
 
-  if (!url) {
-    throw new Error('Invalid checkout url.');
+  if (!cartId) {
+    return submission.reply({ formErrors: [t('cartNotFound')] });
   }
 
-  redirect({ href: url, locale });
+  return redirect({ href: '/checkout', locale });
 };

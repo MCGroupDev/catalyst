@@ -1,10 +1,37 @@
 # Changelog
 
-## 0.24.2
+## 1.0.1
 
 ### Patch Changes
 
-- [`8016f01`](https://github.com/bigcommerce/catalyst/commit/8016f018614691719b10f65bb88bb66170f95ddb) Thanks [@bookernath](https://github.com/bookernath)! - Bump Next.js to latest version to address CVE
+- [#2470](https://github.com/bigcommerce/catalyst/pull/2470) [`094b6af`](https://github.com/bigcommerce/catalyst/commit/094b6af34b47065e320ca388f539285f607f4d7a) Thanks [@agurtovoy](https://github.com/agurtovoy)! - feat: add slots for user-provided content on category pages
+
+## 1.0.0
+
+### Major Changes
+
+- [`7f1e73d`](https://github.com/bigcommerce/catalyst/commit/7f1e73d) Thanks [@matthewvolk](https://github.com/matthewvolk)! - Release 1.0.0 (see [`core/CHANGELOG.md`](https://github.com/bigcommerce/catalyst/blob/canary/core/CHANGELOG.md#100) for more details)
+
+### Patch Changes
+
+- [`11ecddf`](https://github.com/bigcommerce/catalyst/commit/11ecddf) Thanks [@jorgemoya](https://github.com/jorgemoya)! - Re-enable Customer Group Slot component
+- [`281be00`](https://github.com/bigcommerce/catalyst/commit/281be00) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: configure NextAuth cookies to work inside of the Makeswift Builder's canvas
+- [`dea8eab`](https://github.com/bigcommerce/catalyst/commit/dea8eab) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: flicker on rerendering `<ProductList />`
+- [`2cdd078`](https://github.com/bigcommerce/catalyst/commit/2cdd078) Thanks [@arvinpoddar](https://github.com/arvinpoddar)! - fix: bump makeswift runtime version to `v0.24.0`, fixing issue with editing on SSGd pages
+- [`5c198be`](https://github.com/bigcommerce/catalyst/commit/5c198be) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: disable cookie- and language-based locale detection in the builder
+- [`a298d28`](https://github.com/bigcommerce/catalyst/commit/a298d28) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - Upgrade `@makeswift/runtime` to the [0.23.3 release](https://github.com/makeswift/makeswift/releases).
+- [`34ac728`](https://github.com/bigcommerce/catalyst/commit/34ac728) Thanks [@arvinpoddar](https://github.com/arvinpoddar)! - refactor: upgrade Makeswift runtime and use provided utility to construct draft request
+- [`5ea6d6d`](https://github.com/bigcommerce/catalyst/commit/5ea6d6d) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - Usability/terminology fix, Accordions -> Accordion
+- [`8e8b31c`](https://github.com/bigcommerce/catalyst/commit/8e8b31c) Thanks [@pvaladez](https://github.com/pvaladez)! - Add core/lib/makeswift/components folder to tailwind config content property so that tailwind classes can be used in components there.
+- [`89e912e`](https://github.com/bigcommerce/catalyst/commit/89e912e) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - Upgrade to the latest version of Makeswift runtime (0.24.6)
+- [`e5ad65c`](https://github.com/bigcommerce/catalyst/commit/e5ad65c) Thanks [@fikrikarim](https://github.com/fikrikarim)! - Fix: missing **Add-to-cart** feedback on `integrations/makeswift` branch: Toast success notification now appears when **Add to cart** is clicked. Cart button badge in the header now updates to show `1` when the first item is added.
+- [`11ecddf`](https://github.com/bigcommerce/catalyst/commit/11ecddf) Thanks [@jorgemoya](https://github.com/jorgemoya)! - Unify Makeswift component registrations
+- [`e6a98a4`](https://github.com/bigcommerce/catalyst/commit/e6a98a4) Thanks [@arvinpoddar](https://github.com/arvinpoddar)! - fix: upgrade Makeswift runtime. Includes prop editing performance improvements, a bug fix for link editing, and a fix to avoid CSS class collision by using a different Emotion key.
+- [`e968366`](https://github.com/bigcommerce/catalyst/commit/e968366) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: `useCompareDrawer` does not throw on missing context
+- [`037663b`](https://github.com/bigcommerce/catalyst/commit/037663b) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: configure `NEXT_LOCALE` cookie to work inside of the Makeswift Builder's canvas
+- [`881a532`](https://github.com/bigcommerce/catalyst/commit/881a532) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix(theming): changing price label colors has no effect
+- [`12d60da`](https://github.com/bigcommerce/catalyst/commit/12d60da) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: deletion of `NEXT_LOCALE` cookie triggers page rerender
+- [`ed3202d`](https://github.com/bigcommerce/catalyst/commit/ed3202d) Thanks [@alekseygurtovoy](https://github.com/alekseygurtovoy)! - fix: support switching of the page's locale in the Makeswift Builder
 
 ## 0.24.1
 
@@ -168,7 +195,6 @@
 ### Minor Changes
 
 - [#1491](https://github.com/bigcommerce/catalyst/pull/1491) [`313a591`](https://github.com/bigcommerce/catalyst/commit/313a5913181a144b53cb12208132f4a9924e2256) Thanks [@jorgemoya](https://github.com/jorgemoya)! - Bump `next-intl` which includes [some minor changes and updated APIs](<(https://next-intl-docs.vercel.app/blog/next-intl-3-22)>):
-
   - Use new `createNavigation` api.
   - Pass `locale` to redirects.
   - `setRequestLocale` is no longer unstable.
@@ -264,7 +290,6 @@
 - [#1362](https://github.com/bigcommerce/catalyst/pull/1362) [`0814afe`](https://github.com/bigcommerce/catalyst/commit/0814afefca00b2497dddb0622df45f4d50865882) Thanks [@deini](https://github.com/deini)! - If app is not running on Vercel's infra, `<Analytics />` and `<SpeedInsights />` are not rendered.
 
   Opt-out of vercel analytics and speed insights by setting the following env vars to `true`
-
   - `DISABLE_VERCEL_ANALYTICS`
   - `DISABLE_VERCEL_SPEED_INSIGHTS`
 
@@ -353,7 +378,6 @@
 - [#1278](https://github.com/bigcommerce/catalyst/pull/1278) [`f8553c6`](https://github.com/bigcommerce/catalyst/commit/f8553c6c9fb35ab7a143fabd60719c8156269448) Thanks [@jorgemoya](https://github.com/jorgemoya)! - Fix wrapping author text in BlogPostCard.
 
 - [#1322](https://github.com/bigcommerce/catalyst/pull/1322) [`77ecb4b`](https://github.com/bigcommerce/catalyst/commit/77ecb4bb4f527e079788b0f9dff2468e92d0bc1a) Thanks [@jorgemoya](https://github.com/jorgemoya)! - Split auth forms to four different pages:
-
   - /login
   - /register
   - /reset
@@ -403,7 +427,6 @@
 - [#1194](https://github.com/bigcommerce/catalyst/pull/1194) [`b455b05`](https://github.com/bigcommerce/catalyst/commit/b455b05a6121b005bd5147a25c964b9554b1b350) Thanks [@BC-krasnoshapka](https://github.com/BC-krasnoshapka)! - Add basic support for Google Analytics via [Big Open Data Layer](https://developer.bigcommerce.com/docs/integrations/hosted-analytics). BODL and GA4 integration is encapsulated in `bodl` library which hides current complexity and limitations that will be improved in future. It can be extended with more events and integrations with other analytics providers later. Data transformation from Catalyst data models to BODL and firing events is done in client components, as only frontend events are supported by BODL for now.
 
   List of currently supported events:
-
   - View product category
   - View product page
   - Add product to cart

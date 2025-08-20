@@ -1,19 +1,41 @@
 import { removeEdgesAndNodes } from '@bigcommerce/catalyst-client';
 import { getFormatter, getTranslations } from 'next-intl/server';
+import { createLoader, parseAsString, SearchParams } from 'nuqs/server';
+import { cache } from 'react';
 
+import { Stream, Streamable } from '@/vibes/soul/lib/streamable';
+import { Reviews as ReviewsSection } from '@/vibes/soul/sections/reviews';
 import { client } from '~/client';
+import { PaginationFragment } from '~/client/fragments/pagination';
 import { graphql } from '~/client/graphql';
 import { revalidate } from '~/client/revalidate-target';
-import { Rating } from '~/components/ui/rating';
+import { defaultPageInfo, pageInfoTransformer } from '~/data-transformers/page-info-transformer';
 
-import { ProductReviewSchema, ProductReviewSchemaFragment } from './product-review-schema';
+import { ProductReviewSchemaFragment } from './product-review-schema/fragment';
+import { ProductReviewSchema } from './product-review-schema/product-review-schema';
+
+const PaginationSearchParamNames = {
+  BEFORE: 'reviews_before',
+  AFTER: 'reviews_after',
+} as const;
+
+const loadReviewsPaginationSearchParams = createLoader({
+  [PaginationSearchParamNames.BEFORE]: parseAsString,
+  [PaginationSearchParamNames.AFTER]: parseAsString,
+});
 
 const ReviewsQuery = graphql(
   `
-    query ReviewsQuery($entityId: Int!) {
+    query ReviewsQuery($entityId: Int!, $first: Int, $after: String, $before: String, $last: Int) {
       site {
         product(entityId: $entityId) {
-          reviews(first: 5) {
+          reviewSummary {
+            averageRating
+          }
+          reviews(first: $first, after: $after, before: $before, last: $last) {
+            pageInfo {
+              ...PaginationFragment
+            }
             edges {
               node {
                 ...ProductReviewSchemaFragment
@@ -34,70 +56,101 @@ const ReviewsQuery = graphql(
       }
     }
   `,
-  [ProductReviewSchemaFragment],
+  [ProductReviewSchemaFragment, PaginationFragment],
 );
 
-interface Props {
-  productId: number;
-}
-
-export const Reviews = async ({ productId }: Props) => {
-  const t = await getTranslations('Product.Reviews');
-  const format = await getFormatter();
-
+const getReviews = cache(async (productId: number, paginationArgs: object) => {
   const { data } = await client.fetch({
     document: ReviewsQuery,
-    variables: { entityId: productId },
+    variables: { ...paginationArgs, entityId: productId },
     fetchOptions: { next: { revalidate } },
   });
 
-  const product = data.site.product;
+  return data.site.product;
+});
 
-  if (!product) {
-    return null;
-  }
+interface Props {
+  productId: number;
+  searchParams: Promise<SearchParams>;
+}
 
-  const reviews = removeEdgesAndNodes(product.reviews);
+export const Reviews = async ({ productId, searchParams }: Props) => {
+  const t = await getTranslations('Product.Reviews');
+
+  const streamableReviewsData = Streamable.from(async () => {
+    const paginationSearchParams = await loadReviewsPaginationSearchParams(searchParams);
+
+    const {
+      [PaginationSearchParamNames.AFTER]: after,
+      [PaginationSearchParamNames.BEFORE]: before,
+    } = paginationSearchParams;
+    const paginationArgs = before == null ? { first: 5, after } : { last: 5, before };
+
+    return getReviews(productId, paginationArgs);
+  });
+
+  const streamableReviews = Streamable.from(async () => {
+    const product = await streamableReviewsData;
+    const format = await getFormatter();
+
+    if (!product) {
+      return [];
+    }
+
+    return removeEdgesAndNodes(product.reviews).map((review) => ({
+      id: review.entityId.toString(),
+      rating: review.rating,
+      review: review.text,
+      name: review.author.name,
+      date: format.dateTime(new Date(review.createdAt.utc), {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+    }));
+  });
+
+  const streamableAvergeRating = Streamable.from(async () => {
+    const product = await streamableReviewsData;
+
+    if (!product) {
+      return 0;
+    }
+
+    return product.reviewSummary.averageRating;
+  });
+
+  const streamablePaginationInfo = Streamable.from(async () => {
+    const product = await streamableReviewsData;
+
+    return pageInfoTransformer(product?.reviews.pageInfo ?? defaultPageInfo, {
+      startCursorParamName: PaginationSearchParamNames.BEFORE,
+      endCursorParamName: PaginationSearchParamNames.AFTER,
+    });
+  });
 
   return (
     <>
-      <h3 className="mb-4 mt-8 text-xl font-bold md:text-2xl">
-        {t('heading')}
-        {reviews.length > 0 && (
-          <span className="ms-2 ps-1 text-gray-500">
-            <span className="sr-only">{t('reviewsCount')}</span>
-            {reviews.length}
-          </span>
-        )}
-      </h3>
-
-      <ul className="lg:grid lg:grid-cols-2 lg:gap-8">
-        {reviews.length === 0 ? (
-          <li>
-            <p className="pb-6 pt-1">{t('unreviewed')}</p>
-          </li>
-        ) : (
-          reviews.map((review) => {
-            return (
-              <li key={review.entityId}>
-                <p className="mb-3 flex flex-nowrap text-primary">
-                  <Rating rating={review.rating} />
-                  <span className="sr-only">{t('reviewRating', { rating: review.rating })}</span>
-                </p>
-                <h4 className="text-base font-semibold">{review.title}</h4>
-                <p className="mb-2 text-gray-500">
-                  {t('reviewAuthor', { author: review.author.name })}{' '}
-                  {format.dateTime(new Date(review.createdAt.utc), {
-                    dateStyle: 'medium',
-                  })}
-                </p>
-                <p className="mb-6">{review.text}</p>
-              </li>
-            );
-          })
-        )}
-      </ul>
-      {reviews.length > 0 && <ProductReviewSchema productId={productId} reviews={reviews} />}
+      <ReviewsSection
+        averageRating={streamableAvergeRating}
+        emptyStateMessage={t('empty')}
+        nextLabel={t('next')}
+        paginationInfo={streamablePaginationInfo}
+        previousLabel={t('previous')}
+        reviews={streamableReviews}
+        reviewsLabel={t('title')}
+      />
+      <Stream fallback={null} value={streamableReviewsData}>
+        {(product) =>
+          product &&
+          removeEdgesAndNodes(product.reviews).length > 0 && (
+            <ProductReviewSchema
+              productId={productId}
+              reviews={removeEdgesAndNodes(product.reviews)}
+            />
+          )
+        }
+      </Stream>
     </>
   );
 };

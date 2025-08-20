@@ -1,14 +1,13 @@
-import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { Pagination } from '~/components/ui/pagination';
+import { Order, OrderList } from '@/vibes/soul/sections/order-list';
+import { ordersTransformer } from '~/data-transformers/orders-transformer';
+import { defaultPageInfo, pageInfoTransformer } from '~/data-transformers/page-info-transformer';
 
-import { TabHeading } from '../_components/tab-heading';
-
-import { OrdersList } from './_components/orders-list';
 import { getCustomerOrders } from './page-data';
 
 interface Props {
+  params: Promise<{ locale: string }>;
   searchParams: Promise<{
     [key: string]: string | string[] | undefined;
     before?: string;
@@ -16,41 +15,49 @@ interface Props {
   }>;
 }
 
-export default async function Orders({ searchParams }: Props) {
-  const { before, after } = await searchParams;
-  const t = await getTranslations('Account.Orders');
-
+async function getOrders(after?: string, before?: string): Promise<Order[]> {
+  const format = await getFormatter();
   const customerOrdersDetails = await getCustomerOrders({
     ...(after && { after }),
     ...(before && { before }),
   });
 
   if (!customerOrdersDetails) {
-    notFound();
+    return [];
   }
 
-  const { orders, pageInfo } = customerOrdersDetails;
-  const { hasNextPage, hasPreviousPage, startCursor, endCursor } = pageInfo;
+  const { orders } = customerOrdersDetails;
 
-  return (
-    <>
-      <TabHeading heading="orders" />
-      {orders.length === 0 ? (
-        <div className="mx-auto w-fit">{t('noOrders')}</div>
-      ) : (
-        <OrdersList customerOrders={orders} key={endCursor} />
-      )}
-      <div className="mb-14 inline-flex w-full justify-center py-6">
-        <Pagination
-          className="my-0 flex inline-flex justify-center text-center"
-          endCursor={endCursor ?? undefined}
-          hasNextPage={hasNextPage}
-          hasPreviousPage={hasPreviousPage}
-          startCursor={startCursor ?? undefined}
-        />
-      </div>
-    </>
-  );
+  return ordersTransformer(orders, format);
 }
 
-export const runtime = 'edge';
+async function getPaginationInfo(after?: string, before?: string) {
+  const customerOrdersDetails = await getCustomerOrders({
+    ...(after && { after }),
+    ...(before && { before }),
+  });
+
+  return pageInfoTransformer(customerOrdersDetails?.pageInfo ?? defaultPageInfo);
+}
+
+export default async function Orders({ params, searchParams }: Props) {
+  const { locale } = await params;
+
+  setRequestLocale(locale);
+
+  const { before, after } = await searchParams;
+  const t = await getTranslations('Account.Orders');
+
+  return (
+    <OrderList
+      emptyStateActionLabel={t('EmptyState.cta')}
+      emptyStateTitle={t('EmptyState.title')}
+      orderNumberLabel={t('orderNumber')}
+      orders={getOrders(after, before)}
+      paginationInfo={getPaginationInfo(after, before)}
+      title={t('title')}
+      totalLabel={t('totalPrice')}
+      viewDetailsLabel={t('viewDetails')}
+    />
+  );
+}

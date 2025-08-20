@@ -1,18 +1,16 @@
 import { cache } from 'react';
 
-import { getSessionCustomerAccessToken } from '~/auth';
 import { client } from '~/client';
-import { graphql, VariablesOf } from '~/client/graphql';
+import { graphql } from '~/client/graphql';
 import { revalidate } from '~/client/revalidate-target';
-import { BreadcrumbsFragment } from '~/components/breadcrumbs/fragment';
-
-import { CategoryTreeFragment } from './_components/sub-categories';
+import { BreadcrumbsCategoryFragment } from '~/components/breadcrumbs/fragment';
 
 const CategoryPageQuery = graphql(
   `
-    query CategoryPageQuery($categoryId: Int!) {
+    query CategoryPageQuery($entityId: Int!) {
       site {
-        category(entityId: $categoryId) {
+        category(entityId: $entityId) {
+          entityId
           name
           ...BreadcrumbsFragment
           seo {
@@ -21,21 +19,38 @@ const CategoryPageQuery = graphql(
             metaKeywords
           }
         }
-        ...CategoryTreeFragment
+        categoryTree(rootEntityId: $entityId) {
+          entityId
+          name
+          path
+          children {
+            entityId
+            name
+            path
+            children {
+              entityId
+              name
+              path
+            }
+          }
+        }
+        settings {
+          storefront {
+            catalog {
+              productComparisonsEnabled
+            }
+          }
+        }
       }
     }
   `,
-  [BreadcrumbsFragment, CategoryTreeFragment],
+  [BreadcrumbsCategoryFragment],
 );
 
-type Variables = VariablesOf<typeof CategoryPageQuery>;
-
-export const getCategoryPageData = cache(async (variables: Variables) => {
-  const customerAccessToken = await getSessionCustomerAccessToken();
-
+export const getCategoryPageData = cache(async (entityId: number, customerAccessToken?: string) => {
   const response = await client.fetch({
     document: CategoryPageQuery,
-    variables,
+    variables: { entityId },
     customerAccessToken,
     fetchOptions: customerAccessToken ? { cache: 'no-store' } : { next: { revalidate } },
   });

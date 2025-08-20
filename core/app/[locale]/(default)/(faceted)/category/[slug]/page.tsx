@@ -1,41 +1,84 @@
+import { removeEdgesAndNodes } from '@bigcommerce/catalyst-client';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { getFormatter, getTranslations, setRequestLocale } from 'next-intl/server';
+import { createLoader, SearchParams } from 'nuqs/server';
+import { cache } from 'react';
 
-import { Breadcrumbs } from '~/components/breadcrumbs';
-import { ProductCard } from '~/components/product-card';
-import { Pagination } from '~/components/ui/pagination';
+import { Stream, Streamable } from '@/vibes/soul/lib/streamable';
+import { createCompareLoader } from '@/vibes/soul/primitives/compare-drawer/loader';
+import { ProductsListSection } from '@/vibes/soul/sections/products-list-section';
+import { getFilterParsers } from '@/vibes/soul/sections/products-list-section/filter-parsers';
+import { getSessionCustomerAccessToken } from '~/auth';
+import { facetsTransformer } from '~/data-transformers/facets-transformer';
+import { pageInfoTransformer } from '~/data-transformers/page-info-transformer';
+import { pricesTransformer } from '~/data-transformers/prices-transformer';
+import { getPreferredCurrencyCode } from '~/lib/currency';
+import { Slot } from '~/lib/makeswift/slot';
 
-import { FacetedSearch } from '../../_components/faceted-search';
-import { MobileSideNav } from '../../_components/mobile-side-nav';
-import { SortBy } from '../../_components/sort-by';
+import { MAX_COMPARE_LIMIT } from '../../../compare/page-data';
+import { getCompareProducts } from '../../fetch-compare-products';
 import { fetchFacetedSearch } from '../../fetch-faceted-search';
 
 import { CategoryViewed } from './_components/category-viewed';
-import { EmptyState } from './_components/empty-state';
-import { SubCategories } from './_components/sub-categories';
 import { getCategoryPageData } from './page-data';
+
+const getCachedCategory = cache((categoryId: number) => {
+  return {
+    category: categoryId,
+  };
+});
+
+const compareLoader = createCompareLoader();
+
+const createCategorySearchParamsLoader = cache(
+  async (categoryId: number, customerAccessToken?: string) => {
+    const cachedCategory = getCachedCategory(categoryId);
+    const categorySearch = await fetchFacetedSearch(cachedCategory, undefined, customerAccessToken);
+    const categoryFacets = categorySearch.facets.items.filter(
+      (facet) => facet.__typename !== 'CategorySearchFilter',
+    );
+    const transformedCategoryFacets = await facetsTransformer({
+      refinedFacets: categoryFacets,
+      allFacets: categoryFacets,
+      searchParams: {},
+    });
+    const categoryFilters = transformedCategoryFacets.filter((facet) => facet != null);
+    const filterParsers = getFilterParsers(categoryFilters);
+
+    // If there are no filters, return `null`, since calling `createLoader` with an empty
+    // object will throw the following cryptic error:
+    //
+    // ```
+    // Error: [nuqs] Empty search params cache. Search params can't be accessed in Layouts.
+    //   See https://err.47ng.com/NUQS-500
+    // ```
+    if (Object.keys(filterParsers).length === 0) {
+      return null;
+    }
+
+    return createLoader(filterParsers);
+  },
+);
 
 interface Props {
   params: Promise<{
     slug: string;
     locale: string;
   }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<SearchParams>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const { slug } = await props.params;
+  const customerAccessToken = await getSessionCustomerAccessToken();
+
   const categoryId = Number(slug);
 
-  const data = await getCategoryPageData({
-    categoryId,
-  });
-
-  const category = data.category;
+  const { category } = await getCategoryPageData(categoryId, customerAccessToken);
 
   if (!category) {
-    return {};
+    return notFound();
   }
 
   const { pageTitle, metaDescription, metaKeywords } = category.seo;
@@ -48,97 +91,201 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function Category(props: Props) {
-  const searchParams = await props.searchParams;
-  const params = await props.params;
-
-  const { locale, slug } = params;
+  const { slug, locale } = await props.params;
+  const customerAccessToken = await getSessionCustomerAccessToken();
 
   setRequestLocale(locale);
 
-  const t = await getTranslations('Category');
+  const t = await getTranslations('Faceted');
 
   const categoryId = Number(slug);
 
-  const [{ category, categoryTree }, search] = await Promise.all([
-    getCategoryPageData({ categoryId }),
-    fetchFacetedSearch({ ...searchParams, category: categoryId }),
-  ]);
+  const { category, settings, categoryTree } = await getCategoryPageData(
+    categoryId,
+    customerAccessToken,
+  );
 
   if (!category) {
     return notFound();
   }
 
-  const productsCollection = search.products;
-  const products = productsCollection.items;
-  const { hasNextPage, hasPreviousPage, endCursor, startCursor } = productsCollection.pageInfo;
+  const breadcrumbs = removeEdgesAndNodes(category.breadcrumbs).map(({ name, path }) => ({
+    label: name,
+    href: path ?? '#',
+  }));
+
+  const productComparisonsEnabled =
+    settings?.storefront.catalog?.productComparisonsEnabled ?? false;
+
+  const streamableFacetedSearch = Streamable.from(async () => {
+    const searchParams = await props.searchParams;
+    const currencyCode = await getPreferredCurrencyCode();
+
+    const loadSearchParams = await createCategorySearchParamsLoader(
+      categoryId,
+      customerAccessToken,
+    );
+    const parsedSearchParams = loadSearchParams?.(searchParams) ?? {};
+
+    const search = await fetchFacetedSearch(
+      {
+        ...searchParams,
+        ...parsedSearchParams,
+        category: categoryId,
+      },
+      currencyCode,
+      customerAccessToken,
+    );
+
+    return search;
+  });
+
+  const streamableProducts = Streamable.from(async () => {
+    const format = await getFormatter();
+
+    const search = await streamableFacetedSearch;
+    const products = search.products.items;
+
+    return products.map((product) => ({
+      id: product.entityId.toString(),
+      title: product.name,
+      href: product.path,
+      image: product.defaultImage
+        ? { src: product.defaultImage.url, alt: product.defaultImage.altText }
+        : undefined,
+      price: pricesTransformer(product.prices, format),
+      subtitle: product.brand?.name ?? undefined,
+    }));
+  });
+
+  const streamableTotalCount = Streamable.from(async () => {
+    const format = await getFormatter();
+    const search = await streamableFacetedSearch;
+
+    return format.number(search.products.collectionInfo?.totalItems ?? 0);
+  });
+
+  const streamablePagination = Streamable.from(async () => {
+    const search = await streamableFacetedSearch;
+
+    return pageInfoTransformer(search.products.pageInfo);
+  });
+
+  const streamableFilters = Streamable.from(async () => {
+    const searchParams = await props.searchParams;
+
+    const loadSearchParams = await createCategorySearchParamsLoader(
+      categoryId,
+      customerAccessToken,
+    );
+    const parsedSearchParams = loadSearchParams?.(searchParams) ?? {};
+    const cachedCategory = getCachedCategory(categoryId);
+    const categorySearch = await fetchFacetedSearch(cachedCategory, undefined, customerAccessToken);
+    const refinedSearch = await streamableFacetedSearch;
+
+    const allFacets = categorySearch.facets.items.filter(
+      (facet) => facet.__typename !== 'CategorySearchFilter',
+    );
+    const refinedFacets = refinedSearch.facets.items.filter(
+      (facet) => facet.__typename !== 'CategorySearchFilter',
+    );
+
+    const transformedFacets = await facetsTransformer({
+      refinedFacets,
+      allFacets,
+      searchParams: { ...searchParams, ...parsedSearchParams },
+    });
+
+    const filters = transformedFacets.filter((facet) => facet != null);
+
+    const tree = categoryTree[0];
+    const subCategoriesFilters =
+      tree == null || tree.children.length === 0
+        ? []
+        : [
+            {
+              type: 'link-group' as const,
+              label: t('Category.subCategories'),
+              links: tree.children.map((child) => ({
+                label: child.name,
+                href: child.path,
+              })),
+            },
+          ];
+
+    return [...subCategoriesFilters, ...filters];
+  });
+
+  const streamableCompareProducts = Streamable.from(async () => {
+    const searchParams = await props.searchParams;
+
+    if (!productComparisonsEnabled) {
+      return [];
+    }
+
+    const { compare } = compareLoader(searchParams);
+
+    const compareIds = { entityIds: compare ? compare.map((id: string) => Number(id)) : [] };
+
+    const products = await getCompareProducts(compareIds, customerAccessToken);
+
+    return products.map((product) => ({
+      id: product.entityId.toString(),
+      title: product.name,
+      image: product.defaultImage
+        ? { src: product.defaultImage.url, alt: product.defaultImage.altText }
+        : undefined,
+      href: product.path,
+    }));
+  });
 
   return (
-    <div className="group">
-      <Breadcrumbs category={category} />
-      <div className="md:mb-8 lg:flex lg:flex-row lg:items-center lg:justify-between">
-        <h1 className="mb-4 text-4xl font-black lg:mb-0 lg:text-5xl">{category.name}</h1>
-
-        <div className="flex flex-col items-center gap-3 whitespace-nowrap md:flex-row">
-          <MobileSideNav>
-            <FacetedSearch
-              facets={search.facets.items}
-              headingId="mobile-filter-heading"
-              pageType="category"
-            >
-              <SubCategories categoryTree={categoryTree} />
-            </FacetedSearch>
-          </MobileSideNav>
-          <div className="flex w-full flex-col items-start gap-4 md:flex-row md:items-center md:justify-end md:gap-6">
-            <SortBy />
-            <div className="order-3 py-4 text-base font-semibold md:order-2 md:py-0">
-              {t('sortBy', { items: productsCollection.collectionInfo?.totalItems ?? 0 })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 gap-8">
-        <FacetedSearch
-          className="mb-8 hidden lg:block"
-          facets={search.facets.items}
-          headingId="desktop-filter-heading"
-          pageType="category"
-        >
-          <SubCategories categoryTree={categoryTree} />
-        </FacetedSearch>
-
-        <section
-          aria-labelledby="product-heading"
-          className="col-span-4 group-has-[[data-pending]]:animate-pulse lg:col-span-3"
-        >
-          <h2 className="sr-only" id="product-heading">
-            {t('products')}
-          </h2>
-
-          {products.length === 0 && <EmptyState />}
-
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 sm:gap-8">
-            {products.map((product, index) => (
-              <ProductCard
-                imagePriority={index <= 3}
-                imageSize="wide"
-                key={product.entityId}
-                product={product}
-              />
-            ))}
-          </div>
-
-          <Pagination
-            endCursor={endCursor ?? undefined}
-            hasNextPage={hasNextPage}
-            hasPreviousPage={hasPreviousPage}
-            startCursor={startCursor ?? undefined}
-          />
-        </section>
-      </div>
-      <CategoryViewed category={category} categoryId={categoryId} products={products} />
-    </div>
+    <>
+      <Slot
+        label={`${category.name} top content`}
+        snapshotId={`category-${categoryId}-top-content`}
+      />
+      <ProductsListSection
+        breadcrumbs={breadcrumbs}
+        compareLabel={t('Compare.compare')}
+        compareProducts={streamableCompareProducts}
+        emptyStateSubtitle={t('Category.Empty.subtitle')}
+        emptyStateTitle={t('Category.Empty.title')}
+        filterLabel={t('FacetedSearch.filters')}
+        filters={streamableFilters}
+        filtersPanelTitle={t('FacetedSearch.filters')}
+        maxCompareLimitMessage={t('Compare.maxCompareLimit')}
+        maxItems={MAX_COMPARE_LIMIT}
+        paginationInfo={streamablePagination}
+        products={streamableProducts}
+        rangeFilterApplyLabel={t('FacetedSearch.Range.apply')}
+        removeLabel={t('Compare.remove')}
+        resetFiltersLabel={t('FacetedSearch.resetFilters')}
+        showCompare={productComparisonsEnabled}
+        sortDefaultValue="featured"
+        sortLabel={t('SortBy.sortBy')}
+        sortOptions={[
+          { value: 'featured', label: t('SortBy.featuredItems') },
+          { value: 'newest', label: t('SortBy.newestItems') },
+          { value: 'best_selling', label: t('SortBy.bestSellingItems') },
+          { value: 'a_to_z', label: t('SortBy.aToZ') },
+          { value: 'z_to_a', label: t('SortBy.zToA') },
+          { value: 'best_reviewed', label: t('SortBy.byReview') },
+          { value: 'lowest_price', label: t('SortBy.priceAscending') },
+          { value: 'highest_price', label: t('SortBy.priceDescending') },
+          { value: 'relevance', label: t('SortBy.relevance') },
+        ]}
+        sortParamName="sort"
+        title={category.name}
+        totalCount={streamableTotalCount}
+      />
+      <Slot
+        label={`${category.name} bottom content`}
+        snapshotId={`category-${categoryId}-bottom-content`}
+      />
+      <Stream value={streamableFacetedSearch}>
+        {(search) => <CategoryViewed category={category} products={search.products.items} />}
+      </Stream>
+    </>
   );
 }
-
-export const runtime = 'edge';

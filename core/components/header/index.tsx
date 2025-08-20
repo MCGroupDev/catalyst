@@ -1,131 +1,167 @@
-import { ShoppingCart, User } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { ReactNode, Suspense } from 'react';
+import { cache } from 'react';
 
-import { LayoutQuery } from '~/app/[locale]/(default)/query';
+import { Streamable } from '@/vibes/soul/lib/streamable';
+import { GetLinksAndSectionsQuery, LayoutQuery } from '~/app/[locale]/(default)/page-data';
 import { getSessionCustomerAccessToken } from '~/auth';
 import { client } from '~/client';
-import { readFragment } from '~/client/graphql';
+import { graphql, readFragment } from '~/client/graphql';
 import { revalidate } from '~/client/revalidate-target';
+import { TAGS } from '~/client/tags';
 import { logoTransformer } from '~/data-transformers/logo-transformer';
-import { localeLanguageRegionMap } from '~/i18n/routing';
+import { routing } from '~/i18n/routing';
+import { getCartId } from '~/lib/cart';
+import { getPreferredCurrencyCode } from '~/lib/currency';
+import { SiteHeader as HeaderSection } from '~/lib/makeswift/components/site-header';
 
-import { Link } from '../link';
-import { Button } from '../ui/button';
-import { Dropdown } from '../ui/dropdown';
-import { Header as ComponentsHeader } from '../ui/header';
+import { search } from './_actions/search';
+import { switchCurrency } from './_actions/switch-currency';
+import { HeaderFragment, HeaderLinksFragment } from './fragment';
 
-import { logout } from './_actions/logout';
-import { CartLink } from './cart';
-import { HeaderFragment } from './fragment';
-import { QuickSearch } from './quick-search';
+const GetCartCountQuery = graphql(`
+  query GetCartCountQuery($cartId: String) {
+    site {
+      cart(entityId: $cartId) {
+        entityId
+        lineItems {
+          totalQuantity
+        }
+      }
+    }
+  }
+`);
 
-interface Props {
-  cart: ReactNode;
-}
+const getCartCount = cache(async (cartId: string, customerAccessToken?: string) => {
+  const response = await client.fetch({
+    document: GetCartCountQuery,
+    variables: { cartId },
+    customerAccessToken,
+    fetchOptions: {
+      cache: 'no-store',
+      next: {
+        tags: [TAGS.cart],
+      },
+    },
+  });
 
-export const Header = async ({ cart }: Props) => {
-  const locale = await getLocale();
-  const t = await getTranslations('Components.Header');
-  const customerAccessToken = await getSessionCustomerAccessToken();
+  return response.data.site.cart?.lineItems.totalQuantity ?? null;
+});
 
+const getHeaderLinks = cache(async (customerAccessToken?: string) => {
   const { data: response } = await client.fetch({
-    document: LayoutQuery,
+    document: GetLinksAndSectionsQuery,
+    customerAccessToken,
+    // Since this query is needed on every page, it's a good idea not to validate the customer access token.
+    // The 'cache' function also caches errors, so we might get caught in a redirect loop if the cache saves an invalid token error response.
+    validateCustomerAccessToken: false,
     fetchOptions: customerAccessToken ? { cache: 'no-store' } : { next: { revalidate } },
   });
 
-  const data = readFragment(HeaderFragment, response).site;
+  return readFragment(HeaderLinksFragment, response).site.categoryTree;
+});
 
-  /**  To prevent the navigation menu from overflowing, we limit the number of categories to 6.
+const getHeaderData = cache(async () => {
+  const { data: response } = await client.fetch({
+    document: LayoutQuery,
+    fetchOptions: { next: { revalidate } },
+  });
+
+  return readFragment(HeaderFragment, response).site;
+});
+
+export const Header = async () => {
+  const t = await getTranslations('Components.Header');
+  const locale = await getLocale();
+
+  const data = await getHeaderData();
+
+  const logo = data.settings ? logoTransformer(data.settings) : '';
+
+  const locales = routing.locales.map((enabledLocales) => ({
+    id: enabledLocales,
+    label: enabledLocales.toLocaleUpperCase(),
+  }));
+
+  const currencies = data.currencies.edges
+    ? data.currencies.edges
+        // only show transactional currencies for now until cart prices can be rendered in display currencies
+        .filter(({ node }) => node.isTransactional)
+        .map(({ node }) => ({
+          id: node.code,
+          label: node.code,
+          isDefault: node.isDefault,
+        }))
+    : [];
+
+  const streamableLinks = Streamable.from(async () => {
+    const customerAccessToken = await getSessionCustomerAccessToken();
+
+    const categoryTree = await getHeaderLinks(customerAccessToken);
+
+    /**  To prevent the navigation menu from overflowing, we limit the number of categories to 6.
    To show a full list of categories, modify the `slice` method to remove the limit.
    Will require modification of navigation menu styles to accommodate the additional categories.
    */
-  const categoryTree = data.categoryTree.slice(0, 6);
+    const slicedTree = categoryTree.slice(0, 6);
 
-  const links = categoryTree.map(({ name, path, children }) => ({
-    label: name,
-    href: path,
-    groups: children.map((firstChild) => ({
-      label: firstChild.name,
-      href: firstChild.path,
-      links: firstChild.children.map((secondChild) => ({
-        label: secondChild.name,
-        href: secondChild.path,
+    return slicedTree.map(({ name, path, children }) => ({
+      label: name,
+      href: path,
+      groups: children.map((firstChild) => ({
+        label: firstChild.name,
+        href: firstChild.path,
+        links: firstChild.children.map((secondChild) => ({
+          label: secondChild.name,
+          href: secondChild.path,
+        })),
       })),
-    })),
-  }));
+    }));
+  });
+
+  const streamableCartCount = Streamable.from(async () => {
+    const cartId = await getCartId();
+    const customerAccessToken = await getSessionCustomerAccessToken();
+
+    if (!cartId) {
+      return null;
+    }
+
+    return getCartCount(cartId, customerAccessToken);
+  });
+
+  const streamableActiveCurrencyId = Streamable.from(async (): Promise<string | undefined> => {
+    const currencyCode = await getPreferredCurrencyCode();
+
+    const defaultCurrency = currencies.find(({ isDefault }) => isDefault);
+
+    return currencyCode ?? defaultCurrency?.id;
+  });
 
   return (
-    <ComponentsHeader
-      account={
-        customerAccessToken ? (
-          <Dropdown
-            items={[
-              { href: '/account/orders', label: t('Account.orders') },
-              { href: '/account/addresses', label: t('Account.addresses') },
-              { href: '/account/settings', label: t('Account.accountSettings') },
-              { action: logout, name: t('Account.logout') },
-            ]}
-            trigger={
-              <Button
-                aria-label={t('Account.account')}
-                className="p-3 text-black hover:bg-transparent hover:text-primary"
-                variant="subtle"
-              >
-                <User>
-                  <title>{t('Account.account')}</title>
-                </User>
-              </Button>
-            }
-          />
-        ) : (
-          <Link aria-label={t('Account.login')} className="block p-3" href="/login">
-            <User />
-          </Link>
-        )
-      }
-      activeLocale={locale}
-      cart={
-        <p role="status">
-          <Suspense
-            fallback={
-              <CartLink>
-                <ShoppingCart aria-label={t('MiniCart.cart')} />
-              </CartLink>
-            }
-          >
-            {cart}
-          </Suspense>
-        </p>
-      }
-      links={links}
-      locales={localeLanguageRegionMap}
-      logo={data.settings ? logoTransformer(data.settings) : undefined}
-      search={<QuickSearch logo={data.settings ? logoTransformer(data.settings) : ''} />}
+    <HeaderSection
+      navigation={{
+        accountHref: '/login',
+        accountLabel: t('Icons.account'),
+        cartHref: '/cart',
+        cartLabel: t('Icons.cart'),
+        searchHref: '/search',
+        searchParamName: 'term',
+        searchAction: search,
+        searchInputPlaceholder: t('Search.inputPlaceholder'),
+        searchSubmitLabel: t('Search.submitLabel'),
+        links: streamableLinks,
+        logo,
+        mobileMenuTriggerLabel: t('toggleNavigation'),
+        openSearchPopupLabel: t('Icons.search'),
+        logoLabel: t('home'),
+        cartCount: streamableCartCount,
+        activeLocaleId: locale,
+        locales,
+        currencies,
+        activeCurrencyId: streamableActiveCurrencyId,
+        currencyAction: switchCurrency,
+        switchCurrencyLabel: t('SwitchCurrency.label'),
+      }}
     />
   );
 };
-
-export const HeaderSkeleton = () => (
-  <header className="flex min-h-[92px] animate-pulse items-center justify-between gap-1 overflow-y-visible bg-white px-4 2xl:container sm:px-10 lg:gap-8 lg:px-12 2xl:mx-auto 2xl:px-0">
-    <div className="h-16 w-40 rounded bg-slate-200" />
-    <div className="hidden space-x-4 lg:flex">
-      <div className="h-6 w-20 rounded bg-slate-200" />
-      <div className="h-6 w-20 rounded bg-slate-200" />
-      <div className="h-6 w-20 rounded bg-slate-200" />
-      <div className="h-6 w-20 rounded bg-slate-200" />
-    </div>
-    <div className="flex items-center gap-2 lg:gap-4">
-      <div className="h-8 w-8 rounded-full bg-slate-200" />
-
-      <div className="flex gap-2 lg:gap-4">
-        <div className="h-8 w-8 rounded-full bg-slate-200" />
-        <div className="h-8 w-8 rounded-full bg-slate-200" />
-      </div>
-
-      <div className="h-8 w-20 rounded bg-slate-200" />
-
-      <div className="h-8 w-8 rounded bg-slate-200 lg:hidden" />
-    </div>
-  </header>
-);

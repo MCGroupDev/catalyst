@@ -1,34 +1,52 @@
+import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { TabHeading } from '../_components/tab-heading';
+import { AccountSettingsSection } from '@/vibes/soul/sections/account-settings';
 
-import { UpdateSettingsForm } from './_components/update-settings-form';
+import { changePassword } from './_actions/change-password';
+import { updateCustomer } from './_actions/update-customer';
 import { getCustomerSettingsQuery } from './page-data';
 
-export async function generateMetadata() {
-  const t = await getTranslations('Account.Settings');
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params;
+
+  const t = await getTranslations({ locale, namespace: 'Account.Settings' });
 
   return {
     title: t('title'),
   };
 }
 
-export default async function Settings() {
-  const customerSettings = await getCustomerSettingsQuery({
-    address: { filters: { entityIds: [4, 5, 6, 7] } },
-  });
+export default async function Settings({ params }: Props) {
+  const { locale } = await params;
+
+  setRequestLocale(locale);
+
+  const t = await getTranslations('Account.Settings');
+
+  const customerSettings = await getCustomerSettingsQuery();
 
   if (!customerSettings) {
     notFound();
   }
 
   return (
-    <div className="mx-auto lg:w-2/3">
-      <TabHeading heading="settings" />
-      <UpdateSettingsForm {...customerSettings} />
-    </div>
+    <AccountSettingsSection
+      account={customerSettings.customerInfo}
+      changePasswordAction={changePassword}
+      changePasswordSubmitLabel={t('cta')}
+      changePasswordTitle={t('changePassword')}
+      confirmPasswordLabel={t('confirmPassword')}
+      currentPasswordLabel={t('currentPassword')}
+      newPasswordLabel={t('newPassword')}
+      title={t('title')}
+      updateAccountAction={updateCustomer}
+      updateAccountSubmitLabel={t('cta')}
+    />
   );
 }
-
-export const runtime = 'edge';

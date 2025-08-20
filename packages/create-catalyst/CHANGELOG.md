@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.0.0
+
+### Major Changes
+
+- [#2435](https://github.com/bigcommerce/catalyst/pull/2435) [`cd4bd60`](https://github.com/bigcommerce/catalyst/commit/cd4bd604739b0cea4b622b08ebbde4cea953fcae) Thanks [@matthewvolk](https://github.com/matthewvolk)! - Release 1.0.0 (see [`core/CHANGELOG.md`](../../core/CHANGELOG.md#100) for more details)
+
+## 0.22.0
+
+### Minor Changes
+
+- [#2296](https://github.com/bigcommerce/catalyst/pull/2296) [`da1f486`](https://github.com/bigcommerce/catalyst/commit/da1f486685544ebe117881caa97d7b0539171531) Thanks [@matthewvolk](https://github.com/matthewvolk)! - Expands the supported Node.js version of the `create-catalyst` CLI to `^20` and `^22`. The version of Node.js required to run the CLI is not necessarily tied to the version of Node.js required to run Catalyst; the CLI requires at least version 18 to run because it depends on global Fetch API support being enabled by default. More context in [#2296](https://github.com/bigcommerce/catalyst/pull/2296).
+
+- [#2136](https://github.com/bigcommerce/catalyst/pull/2136) [`e5f1ac9`](https://github.com/bigcommerce/catalyst/commit/e5f1ac9879319a66187d410a3dc6b2764b15a789) Thanks [@chanceaclark](https://github.com/chanceaclark)! - Support node 22.
+
+### Patch Changes
+
+- [#2017](https://github.com/bigcommerce/catalyst/pull/2017) [`c1519d4`](https://github.com/bigcommerce/catalyst/commit/c1519d4098baa7d21553415e4c794c185b27ec07) Thanks [@RomanKrasinskyi](https://github.com/RomanKrasinskyi)! - Add es-419 to list of allowed locale for selecting in CLI
+
+## 0.21.0
+
+### Minor Changes
+
+- [#1986](https://github.com/bigcommerce/catalyst/pull/1986) [`b3d55a2`](https://github.com/bigcommerce/catalyst/commit/b3d55a2f6df2de2f0ba448eebadd4b6e10e92708) Thanks [@RomanKrasinskyi](https://github.com/RomanKrasinskyi)! - Allow configuration of locales when creating a new channel
+
+### Patch Changes
+
+- [#1957](https://github.com/bigcommerce/catalyst/pull/1957) [`9e1d942`](https://github.com/bigcommerce/catalyst/commit/9e1d942f9376d4e55e92b295dc9febd2310cb22a) Thanks [@chanceaclark](https://github.com/chanceaclark)! - Removes the ability for command injection in the CLI
+
+## 0.20.0
+
+### Minor Changes
+
+- [#1859](https://github.com/bigcommerce/catalyst/pull/1859) [`62d178e`](https://github.com/bigcommerce/catalyst/commit/62d178e61070b4c9be431fe4a02c9344e8b2500c) Thanks [@bookernath](https://github.com/bookernath)! - Set default gh-ref to @bigcommerce/catalyst-core@latest
+
+### Patch Changes
+
+- [#1859](https://github.com/bigcommerce/catalyst/pull/1859) [`62d178e`](https://github.com/bigcommerce/catalyst/commit/62d178e61070b4c9be431fe4a02c9344e8b2500c) Thanks [@bookernath](https://github.com/bookernath)! - Add notice that preview storefront has been deployed
+
+- [#1859](https://github.com/bigcommerce/catalyst/pull/1859) [`62d178e`](https://github.com/bigcommerce/catalyst/commit/62d178e61070b4c9be431fe4a02c9344e8b2500c) Thanks [@bookernath](https://github.com/bookernath)! - Fix --reset-main and improve OTP copying experience
+
 ## 0.19.0
 
 ### Minor Changes

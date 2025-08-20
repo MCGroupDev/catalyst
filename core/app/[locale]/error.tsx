@@ -1,5 +1,16 @@
 'use client';
 
-import { lazy } from 'react';
+import { useTranslations } from 'next-intl';
 
-export default lazy(() => import('./_components/error'));
+import { Error as ErrorSection } from '@/vibes/soul/sections/error';
+
+interface Props {
+  error: Error & { digest?: string };
+  reset: () => void;
+}
+
+export default function Error({ reset }: Props) {
+  const t = useTranslations('Error');
+
+  return <ErrorSection ctaAction={reset} subtitle={t('subtitle')} title={t('title')} />;
+}
